@@ -71,12 +71,18 @@ const byte sensePin4    = A7;  // Analog current sense channel 4
 
 // === Globals for Moving-Sum Filter ===
 // float x1[N], x2[N], x3[N], x4[N];
+
 float y1n, y1n_1 = 0;
 float y2n, y2n_1 = 0;
 float y3n, y3n_1 = 0;
 float y4n, y4n_1 = 0;
 float  x1=0, x2=0,x3=0,x4=0;
 unsigned long on1 = 0, on2 = 0, on3 = 0, on4 = 0;
+
+// --- For deferred startAll logic ---
+volatile bool startAllFlag = false;
+uint8_t startAllState = 0;
+unsigned long startAllNextTime = 0;
 
 template<uint8_t N> class MovingAverage {
 public:
@@ -101,11 +107,35 @@ private:
 MovingAverage<WINDOW_SIZE> motorFilter[4];
 
 void setup() {
+  randomSeed(analogRead(A3));
+  PWM_1 =  0x00;  //pwm1  
+  PWM_2 =  0x00;  //pwm2
+  PWM_3 =  0x00;  //pwm3
+  PWM_4 =  0x00;  //pwm4  
+    // --- Timer1: 16-bit Fast PWM, Mode 14 (TOP = ICR1), prescaler 8 ---
+  TCCR1A = _BV(WGM11) | _BV(COM1A1) | _BV(COM1B1);
+  TCCR1B = _BV(WGM12) | _BV(WGM13) | _BV(CS11);
+  ICR1   = 0xFF;           // 8-bit range via 16-bit timer
+
+  // --- Timer2: 8-bit Fast PWM, Mode 3 (TOP = 0xFF), prescaler 8 ---
+  TCCR2A = _BV(WGM21) | _BV(WGM20) | _BV(COM2A1) | _BV(COM2B1);
+  TCCR2B = _BV(CS21);
+
+  TCCR2A &= ~_BV(COM2B1); // pwmPin1 (D3)
+  TCCR1A &= ~_BV(COM1A1); // pwmPin2 (D9)
+  TCCR1A &= ~_BV(COM1B1); // pwmPin3 (D10)
+  TCCR2A &= ~_BV(COM2A1); // pwmPin4 (D11)
+  digitalWrite(pwmPin1,LOW);
+  digitalWrite(pwmPin2,LOW);
+  digitalWrite(pwmPin3,LOW);
+  digitalWrite(pwmPin4,LOW);
+  
   // PWM / LED pins
   pinMode(pwmPin1, OUTPUT);
   pinMode(pwmPin2, OUTPUT);
   pinMode(pwmPin3, OUTPUT);
   pinMode(pwmPin4, OUTPUT);
+
   pinMode(masterLed, OUTPUT);
 
   // Start/Stop buttons
@@ -120,14 +150,7 @@ void setup() {
   pinMode(stopPin3,    INPUT_PULLUP);
   pinMode(stopPin4,    INPUT_PULLUP);
 
-  // --- Timer1: 16-bit Fast PWM, Mode 14 (TOP = ICR1), prescaler 8 ---
-  TCCR1A = _BV(WGM11) | _BV(COM1A1) | _BV(COM1B1);
-  TCCR1B = _BV(WGM12) | _BV(WGM13) | _BV(CS11);
-  ICR1   = 0xFF;           // 8-bit range via 16-bit timer
 
-  // --- Timer2: 8-bit Fast PWM, Mode 3 (TOP = 0xFF), prescaler 8 ---
-  TCCR2A = _BV(WGM21) | _BV(WGM20) | _BV(COM2A1) | _BV(COM2B1);
-  TCCR2B = _BV(CS21);
   // PWM_1 = 0; digitalWrite(pwmPin1, LOW);
   // PWM_2 = 0; digitalWrite(pwmPin2, LOW);
   // PWM_3 = 0; digitalWrite(pwmPin3, LOW);
@@ -152,7 +175,19 @@ void setup() {
 }
 
 void loop() {
-  
+  // Handle deferred startAll logic (non-blocking, not in ISR)
+  if (startAllFlag) {
+    digitalWrite(masterLed, HIGH);
+    pln("startall");
+    TCCR2A |= _BV(COM2B1); PWM_1 = DUTY1; on1 = millis(); pln("start1");
+    delay(random(10, 21));
+    TCCR1A |= _BV(COM1A1); PWM_2 = DUTY2; on2 = millis(); pln("start2");
+    delay(random(10, 21));
+    TCCR1A |= _BV(COM1B1); PWM_3 = DUTY3; on3 = millis(); pln("start3");
+    delay(random(10, 21));
+    TCCR2A |= _BV(COM2A1); PWM_4 = DUTY4; on4 = millis(); pln("start4");
+    startAllFlag = false;
+  }
   // Read & normalize currents
   x1 = analogRead(sensePin1) / RN;
   x2 = analogRead(sensePin2) / RN;
@@ -172,25 +207,25 @@ void loop() {
   // Stall detection: shut off if over threshold after 1 second
   if (y1n >= th1 && millis() - on1 > 1000) {
       on1 = millis();
-    PWM_1 = 0;
+      stopLed1();
       pln("stop1");
-    
   }
   if (y2n >= th2 && millis() - on2 > 1000) {
       on2 = millis();
-    PWM_2 = 0;
+      stopLed2();
       pln("stop2");
   }
   if (y3n >= th3 && millis() - on3 > 1000) {
       on3 = millis();
-    PWM_3 = 0;
+      stopLed3();
       pln("stop3");
   }
   if (y4n >= th4 && millis() - on4 > 1000) {
       on4 = millis();
-    PWM_4 = 0;
+      stopLed4();
       pln("stop4");
   }
+  delay(10);
 }
 
 // --- Global START/STOP Handlers ---
@@ -199,13 +234,8 @@ void startAll() {
   unsigned long now = millis();
   if (now - last < D_DELAY) return;
   last = now;
-  digitalWrite(masterLed, HIGH);
-  delay(random(10, 20)); PWM_1 = DUTY1;
-  delay(random(10, 20)); PWM_2 = DUTY2;
-  delay(random(10, 20)); PWM_3 = DUTY3;
-  delay(random(10, 20)); PWM_4 = DUTY4;
-  on1 = on2 = on3 = on4 = millis();
-  pln("startall");
+  startAllFlag = true;
+  startAllState = 0;
 }
 
 void stopAll() {
@@ -214,6 +244,17 @@ void stopAll() {
   if (now - last < D_DELAY) return;
   last = now;
   PWM_1 = PWM_2 = PWM_3 = PWM_4 = 0;
+  // Force PWM pins low by toggling COMxy1 bits
+  TCCR2A &= ~_BV(COM2B1); // pwmPin1 (D3)
+  TCCR1A &= ~_BV(COM1A1); // pwmPin2 (D9)
+  TCCR1A &= ~_BV(COM1B1); // pwmPin3 (D10)
+  TCCR2A &= ~_BV(COM2A1); // pwmPin4 (D11)
+  digitalWrite(pwmPin1,LOW);
+  digitalWrite(pwmPin2,LOW);
+  digitalWrite(pwmPin3,LOW);
+  digitalWrite(pwmPin4,LOW);
+  
+
   digitalWrite(masterLed, LOW);
   pln("stopall");
 }
@@ -224,6 +265,7 @@ void startLed1() {
   unsigned long now = millis();
   if (now - last < D_DELAY) return;
   last = now;
+  TCCR2A |= _BV(COM2B1); // Reconnect timer to pin
   on1 = millis(); PWM_1 = DUTY1;
   pln("start1");
 }
@@ -232,6 +274,7 @@ void startLed2() {
   unsigned long now = millis();
   if (now - last < D_DELAY) return;
   last = now;
+  TCCR1A |= _BV(COM1A1); // Reconnect timer to pin
   on2 = millis(); PWM_2 = DUTY2;
   pln("start2");
 }
@@ -240,6 +283,7 @@ void startLed3() {
   unsigned long now = millis();
   if (now - last < D_DELAY) return;
   last = now;
+  TCCR1A |= _BV(COM1B1); // Reconnect timer to pin
   on3 = millis(); PWM_3 = DUTY3;
   pln("start3");
 }
@@ -248,6 +292,7 @@ void startLed4() {
   unsigned long now = millis();
   if (now - last < D_DELAY) return;
   last = now;
+  TCCR2A |= _BV(COM2A1); // Reconnect timer to pin
   on4 = millis(); PWM_4 = DUTY4;
   pln("start4");
 }
@@ -259,6 +304,8 @@ void stopLed1() {
   if (now - last < D_DELAY) return;
   last = now;
   PWM_1 = 0;
+  TCCR2A &= ~_BV(COM2B1); // Disconnect timer from pin
+  digitalWrite(pwmPin1, LOW);
   pln("stop1");
 }
 void stopLed2() {
@@ -267,6 +314,8 @@ void stopLed2() {
   if (now - last < D_DELAY) return;
   last = now;
   PWM_2 = 0;
+  TCCR1A &= ~_BV(COM1A1); // Disconnect timer from pin
+  digitalWrite(pwmPin2, LOW);
   pln("stop2");
 }
 void stopLed3() {
@@ -275,6 +324,8 @@ void stopLed3() {
   if (now - last < D_DELAY) return;
   last = now;
   PWM_3 = 0;
+  TCCR1A &= ~_BV(COM1B1); // Disconnect timer from pin
+  digitalWrite(pwmPin3, LOW);
   pln("stop3");
 }
 void stopLed4() {
@@ -283,5 +334,7 @@ void stopLed4() {
   if (now - last < D_DELAY) return;
   last = now;
   PWM_4 = 0;
+  TCCR2A &= ~_BV(COM2A1); // Disconnect timer from pin
+  digitalWrite(pwmPin4, LOW);
   pln("stop4");
 }
