@@ -1,18 +1,174 @@
-#include <Arduino.h>
+#include<Arduino.h>
+#include <PinChangeInterrupt.h>
 
-// put function declarations here:
-int myFunction(int, int);
+// --- Forward Declarations for Interrupt Handlers ---
+void startAll();
+void stopAll();
+void startLed1();
+void startLed2();
+void startLed3();
+void startLed4();
+void stopLed1();
+void stopLed2();
+void stopLed3();
+void stopLed4();
+
+
+// === Pin Definitions ===
+const byte pwmPin1      = 3;   // OC2B, Channel 1 PWM & LED indicator
+const byte pwmPin2      = 9;   // OC1A, Channel 2 PWM & LED indicator
+const byte pwmPin3      = 10;  // OC1B, Channel 3 PWM & LED indicator
+const byte pwmPin4      = 11;  // OC2A, Channel 4 PWM & LED indicator
+const byte masterLed    = 13;  // Master ON/OFF indicator
+
+const byte startAllPin  = 2;   // External Interrupt 0
+const byte stopAllPin   = 4;   // PCINT for STOP ALL
+
+const byte startPin1    = 5;   // PCINT for START channel 1
+const byte startPin2    = 6;   // PCINT for START channel 2
+const byte startPin3    = 7;   // PCINT for START channel 3
+const byte startPin4    = 8;   // PCINT for START channel 4
+
+const byte stopPin1     = 12;  // PCINT for STOP channel 1
+const byte stopPin2     = A0;  // PCINT for STOP channel 2
+const byte stopPin3     = A1;  // PCINT for STOP channel 3
+const byte stopPin4     = A2;  // PCINT for STOP channel 4
+
+const byte sensePin1    = A4;  // Analog current sense channel 1
+const byte sensePin2    = A5;  // Analog current sense channel 2
+const byte sensePin3    = A6;  // Analog current sense channel 3
+const byte sensePin4    = A7;  // Analog current sense channel 4
+
+// === Timer & PWM Aliases ===
+#define PWM_1   OCR2B   // drives pwmPin1
+#define PWM_2   OCR1A   // drives pwmPin2
+#define PWM_3   OCR1B   // drives pwmPin3
+#define PWM_4   OCR2A   // drives pwmPin4
+
+// === Filter & Control Parameters ===
+#define N       4
+#define RN     (N * 1024.0)
+#define DUTY1   180
+#define DUTY2   180
+#define DUTY3   180
+#define DUTY4   180
+#define th1    0.35
+#define th2    0.35
+#define th3    0.35
+#define th4    0.35
+
+// === Globals for Moving-Sum Filter ===
+float x1[N], x2[N], x3[N], x4[N];
+float y1n, y1n_1 = 0;
+float y2n, y2n_1 = 0;
+float y3n, y3n_1 = 0;
+float y4n, y4n_1 = 0;
+unsigned long on1 = 0, on2 = 0, on3 = 0, on4 = 0;
 
 void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+  // PWM / LED pins
+  pinMode(pwmPin1, OUTPUT);
+  pinMode(pwmPin2, OUTPUT);
+  pinMode(pwmPin3, OUTPUT);
+  pinMode(pwmPin4, OUTPUT);
+  pinMode(masterLed, OUTPUT);
+
+  // Start/Stop buttons
+  pinMode(startAllPin, INPUT_PULLUP);
+  pinMode(stopAllPin,  INPUT_PULLUP);
+  pinMode(startPin1,   INPUT_PULLUP);
+  pinMode(startPin2,   INPUT_PULLUP);
+  pinMode(startPin3,   INPUT_PULLUP);
+  pinMode(startPin4,   INPUT_PULLUP);
+  pinMode(stopPin1,    INPUT_PULLUP);
+  pinMode(stopPin2,    INPUT_PULLUP);
+  pinMode(stopPin3,    INPUT_PULLUP);
+  pinMode(stopPin4,    INPUT_PULLUP);
+
+  // --- Timer1: 16-bit Fast PWM, Mode 14 (TOP = ICR1), prescaler 8 ---
+  TCCR1A = _BV(WGM11) | _BV(COM1A1) | _BV(COM1B1);
+  TCCR1B = _BV(WGM12) | _BV(WGM13) | _BV(CS11);
+  ICR1   = 0xFF;           // 8-bit range via 16-bit timer
+
+  // --- Timer2: 8-bit Fast PWM, Mode 3 (TOP = 0xFF), prescaler 8 ---
+  TCCR2A = _BV(WGM21) | _BV(WGM20) | _BV(COM2A1) | _BV(COM2B1);
+  TCCR2B = _BV(CS21);
+
+  // --- Interrupts for Start/Stop ---
+  attachInterrupt(digitalPinToInterrupt(startAllPin), startAll, FALLING);
+  attachPCINT(digitalPinToPCINT(stopAllPin), stopAll, RISING);
+
+  attachPCINT(digitalPinToPCINT(startPin1), startLed1, RISING);
+  attachPCINT(digitalPinToPCINT(startPin2), startLed2, RISING);
+  attachPCINT(digitalPinToPCINT(startPin3), startLed3, RISING);
+  attachPCINT(digitalPinToPCINT(startPin4), startLed4, RISING);
+
+  attachPCINT(digitalPinToPCINT(stopPin1), stopLed1, RISING);
+  attachPCINT(digitalPinToPCINT(stopPin2), stopLed2, RISING);
+  attachPCINT(digitalPinToPCINT(stopPin3), stopLed3, RISING);
+  attachPCINT(digitalPinToPCINT(stopPin4), stopLed4, RISING);
+
+  Serial.begin(115200);
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  static uint8_t idx = 0;
+  idx = (idx + 1) & (N - 1);
+
+  // Read & normalize currents
+  x1[idx] = analogRead(sensePin1) / RN;
+  x2[idx] = analogRead(sensePin2) / RN;
+  x3[idx] = analogRead(sensePin3) / RN;
+  x4[idx] = analogRead(sensePin4) / RN;
+
+  // Moving-sum filter update
+  y1n = y1n_1 + x1[idx] - x1[(idx + 1) & (N - 1)]; y1n_1 = y1n;
+  y2n = y2n_1 + x2[idx] - x2[(idx + 1) & (N - 1)]; y2n_1 = y2n;
+  y3n = y3n_1 + x3[idx] - x3[(idx + 1) & (N - 1)]; y3n_1 = y3n;
+  y4n = y4n_1 + x4[idx] - x4[(idx + 1) & (N - 1)]; y4n_1 = y4n;
+
+  // Stall detection: shut off if over threshold after 1 second
+  if (y1n >= th1 && millis() - on1 > 1000) {
+    PWM_1 = 0;
+    digitalWrite(pwmPin1, LOW);
+  }
+  if (y2n >= th2 && millis() - on2 > 1000) {
+    PWM_2 = 0;
+    digitalWrite(pwmPin2, LOW);
+  }
+  if (y3n >= th3 && millis() - on3 > 1000) {
+    PWM_3 = 0;
+    digitalWrite(pwmPin3, LOW);
+  }
+  if (y4n >= th4 && millis() - on4 > 1000) {
+    PWM_4 = 0;
+    digitalWrite(pwmPin4, LOW);
+  }
 }
 
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+// --- Global START/STOP Handlers ---
+void startAll() {
+  digitalWrite(masterLed, HIGH);
+  delay(random(10, 20)); PWM_1 = DUTY1;
+  delay(random(10, 20)); PWM_2 = DUTY2;
+  delay(random(10, 20)); PWM_3 = DUTY3;
+  delay(random(10, 20)); PWM_4 = DUTY4;
+  on1 = on2 = on3 = on4 = millis();
 }
+
+void stopAll() {
+  PWM_1 = PWM_2 = PWM_3 = PWM_4 = 0;
+  digitalWrite(masterLed, LOW);
+}
+
+// --- Per-Channel START Handlers ---
+void startLed1() { on1 = millis(); PWM_1 = DUTY1; }
+void startLed2() { on2 = millis(); PWM_2 = DUTY2; }
+void startLed3() { on3 = millis(); PWM_3 = DUTY3; }
+void startLed4() { on4 = millis(); PWM_4 = DUTY4; }
+
+// --- Per-Channel STOP Handlers ---
+void stopLed1()  { PWM_1 = 0; digitalWrite(pwmPin1, LOW); }
+void stopLed2()  { PWM_2 = 0; digitalWrite(pwmPin2, LOW); }
+void stopLed3()  { PWM_3 = 0; digitalWrite(pwmPin3, LOW); }
+void stopLed4()  { PWM_4 = 0; digitalWrite(pwmPin4, LOW); }
