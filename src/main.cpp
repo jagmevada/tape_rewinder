@@ -128,7 +128,11 @@ void setup() {
   // --- Timer2: 8-bit Fast PWM, Mode 3 (TOP = 0xFF), prescaler 8 ---
   TCCR2A = _BV(WGM21) | _BV(WGM20) | _BV(COM2A1) | _BV(COM2B1);
   TCCR2B = _BV(CS21);
-
+  // PWM_1 = 0; digitalWrite(pwmPin1, LOW);
+  // PWM_2 = 0; digitalWrite(pwmPin2, LOW);
+  // PWM_3 = 0; digitalWrite(pwmPin3, LOW);
+  // PWM_4 = 0; digitalWrite(pwmPin4, LOW);
+  stopAll();
   // --- Interrupts for Start/Stop ---
   attachInterrupt(digitalPinToInterrupt(startAllPin), startAll, FALLING);
   attachPCINT(digitalPinToPCINT(stopAllPin), stopAll, RISING);
@@ -144,6 +148,7 @@ void setup() {
   attachPCINT(digitalPinToPCINT(stopPin4), stopLed4, RISING);
 
   Serial.begin(115200);
+
 }
 
 void loop() {
@@ -168,26 +173,22 @@ void loop() {
   if (y1n >= th1 && millis() - on1 > 1000) {
       on1 = millis();
     PWM_1 = 0;
-    digitalWrite(pwmPin1, LOW);
       pln("stop1");
     
   }
   if (y2n >= th2 && millis() - on2 > 1000) {
       on2 = millis();
     PWM_2 = 0;
-    digitalWrite(pwmPin2, LOW);
       pln("stop2");
   }
   if (y3n >= th3 && millis() - on3 > 1000) {
       on3 = millis();
     PWM_3 = 0;
-    digitalWrite(pwmPin3, LOW);
       pln("stop3");
   }
   if (y4n >= th4 && millis() - on4 > 1000) {
       on4 = millis();
     PWM_4 = 0;
-    digitalWrite(pwmPin4, LOW);
       pln("stop4");
   }
 }
@@ -257,7 +258,7 @@ void stopLed1() {
   unsigned long now = millis();
   if (now - last < D_DELAY) return;
   last = now;
-  PWM_1 = 0; digitalWrite(pwmPin1, LOW);
+  PWM_1 = 0;
   pln("stop1");
 }
 void stopLed2() {
@@ -265,7 +266,7 @@ void stopLed2() {
   unsigned long now = millis();
   if (now - last < D_DELAY) return;
   last = now;
-  PWM_2 = 0; digitalWrite(pwmPin2, LOW);
+  PWM_2 = 0;
   pln("stop2");
 }
 void stopLed3() {
@@ -273,7 +274,7 @@ void stopLed3() {
   unsigned long now = millis();
   if (now - last < D_DELAY) return;
   last = now;
-  PWM_3 = 0; digitalWrite(pwmPin3, LOW);
+  PWM_3 = 0;
   pln("stop3");
 }
 void stopLed4() {
@@ -281,6 +282,6 @@ void stopLed4() {
   unsigned long now = millis();
   if (now - last < D_DELAY) return;
   last = now;
-  PWM_4 = 0; digitalWrite(pwmPin4, LOW);
+  PWM_4 = 0;
   pln("stop4");
 }

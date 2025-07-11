@@ -214,7 +214,9 @@
       "left": -111.4,
       "attrs": { "color": "red" }
     },
-    { "type": "wokwi-gnd", "id": "gnd15", "top": -230.4, "left": -125.4, "attrs": {} }
+    { "type": "wokwi-gnd", "id": "gnd15", "top": -230.4, "left": -125.4, "attrs": {} },
+    { "type": "wokwi-logic-analyzer", "id": "logic1", "top": -239.65, "left": 249.6, "attrs": {} },
+    { "type": "wokwi-gnd", "id": "gnd16", "top": -134.4, "left": 153, "attrs": {} }
   ],
   "connections": [
     [ "btn1:1.r", "nano:2", "green", [ "v0" ] ],
@@ -273,7 +275,12 @@
     [ "led9:C", "gnd15:GND", "green", [ "v0" ] ],
     [ "r9:2", "nano:9", "gold", [ "h0" ] ],
     [ "r7:2", "nano:10", "gold", [ "h4.8", "v8.4", "h134.4" ] ],
-    [ "r5:2", "nano:11", "gold", [ "h0", "v18", "h172.8" ] ]
+    [ "r5:2", "nano:11", "gold", [ "h0", "v18", "h172.8" ] ],
+    [ "logic1:D0", "nano:3", "green", [ "h0" ] ],
+    [ "logic1:D3", "nano:11", "green", [ "h0" ] ],
+    [ "logic1:GND", "gnd16:GND", "black", [ "h0" ] ],
+    [ "logic1:D2", "nano:10", "green", [ "h0" ] ],
+    [ "logic1:D1", "nano:9", "green", [ "h0" ] ]
   ],
   "dependencies": {}
 }
