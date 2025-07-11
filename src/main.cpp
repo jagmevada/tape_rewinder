@@ -1,5 +1,17 @@
 #include<Arduino.h>
 #include <PinChangeInterrupt.h>
+#define DBG
+// --- Serial Print Macros for Quick Debugging ---
+#ifdef DBG
+#define p(x)    Serial.print(x)
+#define pln(x)  Serial.println(x)
+#else
+#define p(x)    ((void)0)
+#define pln(x)  ((void)0)
+#endif
+
+// --- Debounce delay (ms) ---
+#define D_DELAY 500
 
 // --- Forward Declarations for Interrupt Handlers ---
 void startAll();
@@ -46,8 +58,8 @@ const byte sensePin4    = A7;  // Analog current sense channel 4
 #define PWM_4   OCR2A   // drives pwmPin4
 
 // === Filter & Control Parameters ===
-#define N       4
-#define RN     (N * 1024.0)
+#define N       16
+#define RN     ((N-1) * 1024.0)
 #define DUTY1   180
 #define DUTY2   180
 #define DUTY3   180
@@ -112,20 +124,35 @@ void setup() {
 }
 
 void loop() {
-  static uint8_t idx = 0;
+  static uint8_t idx = (N-1);
   idx = (idx + 1) & (N - 1);
-
+ 
   // Read & normalize currents
   x1[idx] = analogRead(sensePin1) / RN;
   x2[idx] = analogRead(sensePin2) / RN;
   x3[idx] = analogRead(sensePin3) / RN;
   x4[idx] = analogRead(sensePin4) / RN;
+ 
+
 
   // Moving-sum filter update
   y1n = y1n_1 + x1[idx] - x1[(idx + 1) & (N - 1)]; y1n_1 = y1n;
   y2n = y2n_1 + x2[idx] - x2[(idx + 1) & (N - 1)]; y2n_1 = y2n;
   y3n = y3n_1 + x3[idx] - x3[(idx + 1) & (N - 1)]; y3n_1 = y3n;
   y4n = y4n_1 + x4[idx] - x4[(idx + 1) & (N - 1)]; y4n_1 = y4n;
+
+  // Debug print: print all sensePin1-4 values separated by tabs
+  p(x2[idx]); p("\t");
+  p(x3[idx]); p("\t");
+  p(x4[idx]); p("\t");
+  p(x1[idx]); p("\t");
+  p(x2[idx]); p("\t");
+  p(x3[idx]); p("\t");
+  p(x4[idx]); p("\t");
+  p(y1n); p("\t");
+  p(y2n); p("\t");
+  p(y3n); p("\t");
+  pln(y4n);
 
   // Stall detection: shut off if over threshold after 1 second
   if (y1n >= th1 && millis() - on1 > 1000) {
@@ -148,27 +175,93 @@ void loop() {
 
 // --- Global START/STOP Handlers ---
 void startAll() {
+  static unsigned long last = 0;
+  unsigned long now = millis();
+  if (now - last < D_DELAY) return;
+  last = now;
   digitalWrite(masterLed, HIGH);
   delay(random(10, 20)); PWM_1 = DUTY1;
   delay(random(10, 20)); PWM_2 = DUTY2;
   delay(random(10, 20)); PWM_3 = DUTY3;
   delay(random(10, 20)); PWM_4 = DUTY4;
   on1 = on2 = on3 = on4 = millis();
+  pln("startall");
 }
 
 void stopAll() {
+  static unsigned long last = 0;
+  unsigned long now = millis();
+  if (now - last < D_DELAY) return;
+  last = now;
   PWM_1 = PWM_2 = PWM_3 = PWM_4 = 0;
   digitalWrite(masterLed, LOW);
+  pln("stopall");
 }
 
 // --- Per-Channel START Handlers ---
-void startLed1() { on1 = millis(); PWM_1 = DUTY1; }
-void startLed2() { on2 = millis(); PWM_2 = DUTY2; }
-void startLed3() { on3 = millis(); PWM_3 = DUTY3; }
-void startLed4() { on4 = millis(); PWM_4 = DUTY4; }
+void startLed1() {
+  static unsigned long last = 0;
+  unsigned long now = millis();
+  if (now - last < D_DELAY) return;
+  last = now;
+  on1 = millis(); PWM_1 = DUTY1;
+  pln("start1");
+}
+void startLed2() {
+  static unsigned long last = 0;
+  unsigned long now = millis();
+  if (now - last < D_DELAY) return;
+  last = now;
+  on2 = millis(); PWM_2 = DUTY2;
+  pln("start2");
+}
+void startLed3() {
+  static unsigned long last = 0;
+  unsigned long now = millis();
+  if (now - last < D_DELAY) return;
+  last = now;
+  on3 = millis(); PWM_3 = DUTY3;
+  pln("start3");
+}
+void startLed4() {
+  static unsigned long last = 0;
+  unsigned long now = millis();
+  if (now - last < D_DELAY) return;
+  last = now;
+  on4 = millis(); PWM_4 = DUTY4;
+  pln("start4");
+}
 
 // --- Per-Channel STOP Handlers ---
-void stopLed1()  { PWM_1 = 0; digitalWrite(pwmPin1, LOW); }
-void stopLed2()  { PWM_2 = 0; digitalWrite(pwmPin2, LOW); }
-void stopLed3()  { PWM_3 = 0; digitalWrite(pwmPin3, LOW); }
-void stopLed4()  { PWM_4 = 0; digitalWrite(pwmPin4, LOW); }
+void stopLed1() {
+  static unsigned long last = 0;
+  unsigned long now = millis();
+  if (now - last < D_DELAY) return;
+  last = now;
+  PWM_1 = 0; digitalWrite(pwmPin1, LOW);
+  pln("stop1");
+}
+void stopLed2() {
+  static unsigned long last = 0;
+  unsigned long now = millis();
+  if (now - last < D_DELAY) return;
+  last = now;
+  PWM_2 = 0; digitalWrite(pwmPin2, LOW);
+  pln("stop2");
+}
+void stopLed3() {
+  static unsigned long last = 0;
+  unsigned long now = millis();
+  if (now - last < D_DELAY) return;
+  last = now;
+  PWM_3 = 0; digitalWrite(pwmPin3, LOW);
+  pln("stop3");
+}
+void stopLed4() {
+  static unsigned long last = 0;
+  unsigned long now = millis();
+  if (now - last < D_DELAY) return;
+  last = now;
+  PWM_4 = 0; digitalWrite(pwmPin4, LOW);
+  pln("stop4");
+}
