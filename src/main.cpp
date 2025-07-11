@@ -58,8 +58,8 @@ const byte sensePin4    = A7;  // Analog current sense channel 4
 #define PWM_4   OCR2A   // drives pwmPin4
 
 // === Filter & Control Parameters ===
-#define N       16
-#define RN     ((N-1) * 1024.0)
+#define WINDOW_SIZE 4
+#define RN     (WINDOW_SIZE * 1024.0)
 #define DUTY1   180
 #define DUTY2   180
 #define DUTY3   180
@@ -70,12 +70,35 @@ const byte sensePin4    = A7;  // Analog current sense channel 4
 #define th4    0.35
 
 // === Globals for Moving-Sum Filter ===
-float x1[N], x2[N], x3[N], x4[N];
+// float x1[N], x2[N], x3[N], x4[N];
 float y1n, y1n_1 = 0;
 float y2n, y2n_1 = 0;
 float y3n, y3n_1 = 0;
 float y4n, y4n_1 = 0;
+float  x1=0, x2=0,x3=0,x4=0;
 unsigned long on1 = 0, on2 = 0, on3 = 0, on4 = 0;
+
+template<uint8_t N> class MovingAverage {
+public:
+  MovingAverage() : sum(0), idx(0) {
+    static_assert((N & (N-1)) == 0,
+                  "N must be a power of two");
+    for (auto &v : buf) v = 0;
+  }
+  float update(float sample) {
+    sum -= buf[idx];
+    buf[idx] = sample;
+    sum += sample;
+    idx = (idx + 1) & (N - 1);
+    return sum;
+  }
+private:
+  float    buf[N];
+  float    sum;
+  uint8_t  idx;
+};
+
+MovingAverage<WINDOW_SIZE> motorFilter[4];
 
 void setup() {
   // PWM / LED pins
@@ -124,52 +147,48 @@ void setup() {
 }
 
 void loop() {
-  static uint8_t idx = (N-1);
-  idx = (idx + 1) & (N - 1);
- 
+  
   // Read & normalize currents
-  x1[idx] = analogRead(sensePin1) / RN;
-  x2[idx] = analogRead(sensePin2) / RN;
-  x3[idx] = analogRead(sensePin3) / RN;
-  x4[idx] = analogRead(sensePin4) / RN;
- 
-
-
-  // Moving-sum filter update
-  y1n = y1n_1 + x1[idx] - x1[(idx + 1) & (N - 1)]; y1n_1 = y1n;
-  y2n = y2n_1 + x2[idx] - x2[(idx + 1) & (N - 1)]; y2n_1 = y2n;
-  y3n = y3n_1 + x3[idx] - x3[(idx + 1) & (N - 1)]; y3n_1 = y3n;
-  y4n = y4n_1 + x4[idx] - x4[(idx + 1) & (N - 1)]; y4n_1 = y4n;
+  x1 = analogRead(sensePin1) / RN;
+  x2 = analogRead(sensePin2) / RN;
+  x3 = analogRead(sensePin3) / RN;
+  x4 = analogRead(sensePin4) / RN;
+  y1n = motorFilter[0].update(x1);
+  y2n = motorFilter[1].update(x2);
+  y3n = motorFilter[2].update(x3);
+  y4n = motorFilter[3].update(x4);
 
   // Debug print: print all sensePin1-4 values separated by tabs
-  p(x2[idx]); p("\t");
-  p(x3[idx]); p("\t");
-  p(x4[idx]); p("\t");
-  p(x1[idx]); p("\t");
-  p(x2[idx]); p("\t");
-  p(x3[idx]); p("\t");
-  p(x4[idx]); p("\t");
-  p(y1n); p("\t");
-  p(y2n); p("\t");
-  p(y3n); p("\t");
-  pln(y4n);
+  // p(y1n); p("\t");
+  // p(y2n); p("\t");
+  // p(y3n); p("\t");
+  // pln(y4n);
 
   // Stall detection: shut off if over threshold after 1 second
   if (y1n >= th1 && millis() - on1 > 1000) {
+      on1 = millis();
     PWM_1 = 0;
     digitalWrite(pwmPin1, LOW);
+      pln("stop1");
+    
   }
   if (y2n >= th2 && millis() - on2 > 1000) {
+      on2 = millis();
     PWM_2 = 0;
     digitalWrite(pwmPin2, LOW);
+      pln("stop2");
   }
   if (y3n >= th3 && millis() - on3 > 1000) {
+      on3 = millis();
     PWM_3 = 0;
     digitalWrite(pwmPin3, LOW);
+      pln("stop3");
   }
   if (y4n >= th4 && millis() - on4 > 1000) {
+      on4 = millis();
     PWM_4 = 0;
     digitalWrite(pwmPin4, LOW);
+      pln("stop4");
   }
 }
 
