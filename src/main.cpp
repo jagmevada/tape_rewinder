@@ -27,10 +27,10 @@ void stopLed4();
 
 
 // === Pin Definitions ===
-const byte pwmPin1      = 3;   // OC2B, Channel 1 PWM & LED indicator
-const byte pwmPin2      = 9;   // OC1A, Channel 2 PWM & LED indicator
-const byte pwmPin3      = 10;  // OC1B, Channel 3 PWM & LED indicator
-const byte pwmPin4      = 11;  // OC2A, Channel 4 PWM & LED indicator
+const byte pwmPin1      = 3;   // OC2B, Channel 1 PWM & LED indicator####
+const byte pwmPin2      = 9;   // OC1A, Channel 2 PWM & LED indicator####
+const byte pwmPin3      = 10;  // OC1B, Channel 3 PWM & LED indicator####
+const byte pwmPin4      = 11;  // OC2A, Channel 4 PWM & LED indicator####
 const byte masterLed    = 13;  // Master ON/OFF indicator
 
 const byte startAllPin  = 2;   // External Interrupt 0
@@ -46,10 +46,10 @@ const byte stopPin2     = A0;  // PCINT for STOP channel 2
 const byte stopPin3     = A1;  // PCINT for STOP channel 3
 const byte stopPin4     = A2;  // PCINT for STOP channel 4
 
-const byte sensePin1    = A4;  // Analog current sense channel 1
-const byte sensePin2    = A5;  // Analog current sense channel 2
-const byte sensePin3    = A6;  // Analog current sense channel 3
-const byte sensePin4    = A7;  // Analog current sense channel 4
+const byte sensePin1    = A4;  // Analog current sense channel 1####
+const byte sensePin2    = A5;  // Analog current sense channel 2####
+const byte sensePin3    = A6;  // Analog current sense channel 3####
+const byte sensePin4    = A7;  // Analog current sense channel 4####
 
 // === Timer & PWM Aliases ===
 #define PWM_1   OCR2B   // drives pwmPin1
@@ -170,8 +170,20 @@ void setup() {
   attachPCINT(digitalPinToPCINT(stopPin3), stopLed3, RISING);
   attachPCINT(digitalPinToPCINT(stopPin4), stopLed4, RISING);
 
-  Serial.begin(115200);
-
+  Serial.begin(9600);
+startAllFlag =  true;
+  if (startAllFlag) {
+    digitalWrite(masterLed, HIGH);
+    pln("startall");
+    TCCR2A |= _BV(COM2B1); PWM_1 = DUTY1; on1 = millis(); pln("start1");
+    delay(random(10, 21));
+    TCCR1A |= _BV(COM1A1); PWM_2 = DUTY2; on2 = millis(); pln("start2");
+    delay(random(10, 21));
+    TCCR1A |= _BV(COM1B1); PWM_3 = DUTY3; on3 = millis(); pln("start3");
+    delay(random(10, 21));
+    TCCR2A |= _BV(COM2A1); PWM_4 = DUTY4; on4 = millis(); pln("start4");
+    startAllFlag = false;
+  }
 }
 
 void loop() {
@@ -198,33 +210,40 @@ void loop() {
   y3n = motorFilter[2].update(x3);
   y4n = motorFilter[3].update(x4);
 
+ 
   // Debug print: print all sensePin1-4 values separated by tabs
   // p(y1n); p("\t");
   // p(y2n); p("\t");
   // p(y3n); p("\t");
   // pln(y4n);
 
-  // Stall detection: shut off if over threshold after 1 second
-  if (y1n >= th1 && millis() - on1 > 1000) {
-      on1 = millis();
-      stopLed1();
-      pln("stop1");
-  }
-  if (y2n >= th2 && millis() - on2 > 1000) {
-      on2 = millis();
-      stopLed2();
-      pln("stop2");
-  }
-  if (y3n >= th3 && millis() - on3 > 1000) {
-      on3 = millis();
-      stopLed3();
-      pln("stop3");
-  }
-  if (y4n >= th4 && millis() - on4 > 1000) {
-      on4 = millis();
-      stopLed4();
-      pln("stop4");
-  }
+  // // Stall detection: shut off if over threshold after 1 second
+  // if (y1n >= th1 && millis() - on1 > 1000) {
+  //     on1 = millis();
+  //     stopLed1();
+  //     pln("stop1");
+  // }
+  // if (y2n >= th2 && millis() - on2 > 1000) {
+  //     on2 = millis();
+  //     stopLed2();
+  //     pln("stop2");
+  // }
+  // if (y3n >= th3 && millis() - on3 > 1000) {
+  //     on3 = millis();
+  //     stopLed3();
+  //     pln("stop3");
+  // }
+  // if (y4n >= th4 && millis() - on4 > 1000) {
+  //     on4 = millis();
+  //     stopLed4();
+  //     pln("stop4");
+  // }
+   // Print them in one line
+  Serial.print("y1n: "); Serial.print(y1n);
+  Serial.print("\t y2n: "); Serial.print(y2n);
+  Serial.print("\t y3n: "); Serial.print(y3n);
+  Serial.print("\t y4n: "); Serial.println(y4n);
+
   delay(10);
 }
 

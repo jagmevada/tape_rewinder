@@ -1,0 +1,28 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION (( 'STEP AP214' ),
+    '1' );
+FILE_NAME ('PCB Spacer6.STEP',
+    '2025-08-29T08:12:58',
+    ( '' ),
+    ( '' ),
+    'SwSTEP 2.0',
+    'SolidWorks 2025',
+    '' );
+FILE_SCHEMA (( 'AUTOMOTIVE_DESIGN' ));
+ENDSEC;
+
+DATA;
+#1 = APPLICATION_PROTOCOL_DEFINITION ( 'draft international standard', 'automotive_design', 1998, #4 ) ;
+#2 = PRODUCT_DEFINITION_CONTEXT ( 'detailed design', #4, 'design' ) ;
+#3 = PRODUCT_RELATED_PRODUCT_CATEGORY ( 'part', '', ( #11 ) ) ;
+#4 = APPLICATION_CONTEXT ( 'automotive_design' ) ;
+#5 = PRODUCT_DEFINITION ( 'UNKNOWN', '', #9, #2 ) ;
+#6 = APPLICATION_CONTEXT ( 'automotive_design' ) ;
+#7 = PRODUCT_DEFINITION_SHAPE ( 'NONE', 'NONE',  #5 ) ;
+#8 = PRODUCT_CONTEXT ( 'NONE', #6, 'mechanical' ) ;
+#9 = PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE ( 'ANY', '', #11, .NOT_KNOWN. ) ;
+#10 = APPLICATION_PROTOCOL_DEFINITION ( 'draft international standard', 'automotive_design', 1998, #6 ) ;
+#11 = PRODUCT ( 'PCB Spacer6', 'PCB Spacer6', '', ( #8 ) ) ;
+ENDSEC;
+END-ISO-10303-21;

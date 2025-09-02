@@ -1,0 +1,5 @@
+Added Component: Designator=U4(*SOP65P640X120-14N)
+Add component (AddParameter): Name = "Check_prices"; Value = "https://www.snapeda.com/parts/INA4180A4IPWR/Texas+Instruments/view-part/?ref=eda"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "SnapEDA_Link"; Value = "https://www.snapeda.com/parts/INA4180A4IPWR/Texas+Instruments/view-part/?ref=snap"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Value"; Value = ""; VariantName = "[No Variations]"
+Added Member To Class: ClassName=tape_rewinder Member=Component U4 INA4180A4IPWR
