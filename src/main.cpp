@@ -63,14 +63,15 @@ const byte sensePin4 = A7;  // Analog current sense channel 4####
 // === Filter & Control Parameters ===
 #define WINDOW_SIZE 4
 #define RN (WINDOW_SIZE * 1024.0)
-#define DUTY1 180
-#define DUTY2 180
-#define DUTY3 180
-#define DUTY4 180
-#define th1 0.99
-#define th2 0.99
-#define th3 0.99
-#define th4 0.99
+#define DUTY1 190  // 180-190-195
+#define DUTY2 190 // 180-190-195
+#define DUTY3 190 // 180-190-195
+#define DUTY4 190 // 180-190-195
+#define th1 0.88 //0.82-0.88-0.9  
+#define th2 0.88 //0.82-0.88-0.9
+#define th3 0.88 //0.82-0.88-0.9
+#define th4 0.88 //0.82-0.88-0.9
+#define START_DELAY  1500UL
 
 // === Globals for Moving-Sum Filter ===
 // float x1[N], x2[N], x3[N], x4[N];
@@ -91,15 +92,16 @@ struct PWMState {
 
   bool ramp_up = false;
   bool ramp_down = false;
-
+  
   uint8_t current_duty = 0;
   uint8_t target_duty = 0;
 
   unsigned long last_update = 0;
+  // unsigned long time_since_start = millis();  //ms to allow higher current during start
 };
 
-const unsigned long kRampInterval = 50;  // ms between duty updates
-const uint8_t kRampStep = 20;            // duty increment/decrement step
+const unsigned long kRampInterval = 40;  // ms between duty updates
+const uint8_t kRampStep = 5;            // duty increment/decrement step
 
 MovingAverage<WINDOW_SIZE> motorFilter[4];
 
@@ -174,34 +176,10 @@ void setup() {
 void loop() {
   // Handle deferred startAll logic (non-blocking, not in ISR)
   if (startAllFlag) {
-    digitalWrite(masterLed, HIGH);
-    pln("startall");
-    TCCR2A |= _BV(COM2B1);
-    pwm_state[0].ramp_up = true;
-    pwm_state[0].target_duty = DUTY1;
-    on1 = millis();
-    pln("start1");
-
-    delay(random(10, 21));
-    TCCR1A |= _BV(COM1A1);
-    pwm_state[1].ramp_up = true;
-    pwm_state[1].target_duty = DUTY2;
-    on2 = millis();
-    pln("start2");
-
-    delay(random(10, 21));
-    TCCR1A |= _BV(COM1B1);
-    pwm_state[2].ramp_up = true;
-    pwm_state[2].target_duty = DUTY3;
-    on3 = millis();
-    pln("start3");
-
-    delay(random(10, 21));
-    TCCR2A |= _BV(COM2A1);
-    pwm_state[3].ramp_up = true;
-    pwm_state[3].target_duty = DUTY4;
-    on4 = millis();
-    pln("start4");
+    startLed1();
+    startLed2();
+    startLed3();
+    startLed4();
     startAllFlag = false;
   }
   // Read & normalize currents
@@ -319,23 +297,27 @@ void loop() {
   // pln(y4n);
 
   // Stall detection: shut off if over threshold after 1 second
-  if (y1n >= th1 && millis() - on1 > 1000) {
+  if (y1n >= th1 && millis() - on1 > START_DELAY) {
     on1 = millis();
+    pwm_state[0].current_duty = 130;
     stopLed1();
     pln("stop1");
   }
-  if (y2n >= th2 && millis() - on2 > 1000) {
+  if (y2n >= th2 && millis() - on2 > START_DELAY) {
     on2 = millis();
+    pwm_state[1].current_duty = 130;
     stopLed2();
     pln("stop2");
   }
-  if (y3n >= th3 && millis() - on3 > 1000) {
+  if (y3n >= th3 && millis() - on3 > START_DELAY) {
     on3 = millis();
+    pwm_state[2].current_duty = 130;
     stopLed3();
     pln("stop3");
   }
-  if (y4n >= th4 && millis() - on4 > 1000) {
+  if (y4n >= th4 && millis() - on4 > START_DELAY) {
     on4 = millis();
+    pwm_state[3].current_duty = 130;
     stopLed4();
     pln("stop4");
   }
@@ -350,7 +332,7 @@ void loop() {
   p("\t y4n: ");
   pln(y4n);
 
-  delay(10);
+  delay(1);
 }
 
 // --- Global START/STOP Handlers ---
@@ -405,6 +387,8 @@ void startLed1() {
   // PWM_1 = DUTY1;
 
   pwm_state[0].ramp_up = true;
+  pwm_state[0].current_duty = 50;
+  pwm_state[0].ramp_down = false;
   pwm_state[0].target_duty = DUTY1;
   pln("start1");
 }
@@ -417,6 +401,8 @@ void startLed2() {
   on2 = millis();
 
   pwm_state[1].ramp_up = true;
+  pwm_state[1].current_duty = 50;
+  pwm_state[1].ramp_down = false;
   pwm_state[1].target_duty = DUTY2;
   pln("start2");
 }
@@ -429,6 +415,8 @@ void startLed3() {
   on3 = millis();
 
   pwm_state[2].ramp_up = true;
+  pwm_state[2].current_duty = 50;
+  pwm_state[2].ramp_down = false;
   pwm_state[2].target_duty = DUTY3;
   pln("start3");
 }
@@ -441,6 +429,8 @@ void startLed4() {
   on4 = millis();
 
   pwm_state[3].ramp_up = true;
+  pwm_state[3].current_duty = 50;
+  pwm_state[3].ramp_down = false;
   pwm_state[3].target_duty = DUTY4;
   pln("start4");
 }
@@ -452,6 +442,7 @@ void stopLed1() {
   if (now - last < D_DELAY) return;
   last = now;
   pwm_state[0].ramp_down = true;
+  pwm_state[0].ramp_up = false;
   pwm_state[0].target_duty = 0;
   pln("stop1");
 }
@@ -461,6 +452,7 @@ void stopLed2() {
   if (now - last < D_DELAY) return;
   last = now;
   pwm_state[1].ramp_down = true;
+  pwm_state[1].ramp_up = false;
   pwm_state[1].target_duty = 0;
   pln("stop2");
 }
@@ -470,6 +462,7 @@ void stopLed3() {
   if (now - last < D_DELAY) return;
   last = now;
   pwm_state[2].ramp_down = true;
+  pwm_state[2].ramp_up = false;
   pwm_state[2].target_duty = 0;
   pln("stop3");
 }
@@ -479,6 +472,7 @@ void stopLed4() {
   if (now - last < D_DELAY) return;
   last = now;
   pwm_state[3].ramp_down = true;
+  pwm_state[3].ramp_up = false;
   pwm_state[3].target_duty = 0;
   pln("stop4");
 }
