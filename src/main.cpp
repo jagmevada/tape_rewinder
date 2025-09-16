@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <PinChangeInterrupt.h>
 
+// #include <algorithm>
 #include <moving_average.hpp>
 
 #define DBG
@@ -66,10 +67,10 @@ const byte sensePin4 = A7;  // Analog current sense channel 4####
 #define DUTY2 180
 #define DUTY3 180
 #define DUTY4 180
-#define th1 0.35
-#define th2 0.35
-#define th3 0.35
-#define th4 0.35
+#define th1 0.99
+#define th2 0.99
+#define th3 0.99
+#define th4 0.99
 
 // === Globals for Moving-Sum Filter ===
 // float x1[N], x2[N], x3[N], x4[N];
@@ -91,14 +92,14 @@ struct PWMState {
   bool ramp_up = false;
   bool ramp_down = false;
 
-  uint8_t target_duty = 0;
   uint8_t current_duty = 0;
+  uint8_t target_duty = 0;
 
   unsigned long last_update = 0;
 };
 
 const unsigned long kRampInterval = 50;  // ms between duty updates
-const uint8_t kRampStep = 5;             // duty increment/decrement step
+const uint8_t kRampStep = 20;            // duty increment/decrement step
 
 MovingAverage<WINDOW_SIZE> motorFilter[4];
 
@@ -151,10 +152,6 @@ void setup() {
   pinMode(stopButton3, INPUT_PULLUP);
   pinMode(stopButton4, INPUT_PULLUP);
 
-  // PWM_1 = 0; digitalWrite(ledPin1, LOW);
-  // PWM_2 = 0; digitalWrite(ledPin2, LOW);
-  // PWM_3 = 0; digitalWrite(ledPin3, LOW);
-  // PWM_4 = 0; digitalWrite(ledPin4, LOW);
   stopAll();
 
   // --- Interrupts for Start/Stop ---
@@ -180,22 +177,29 @@ void loop() {
     digitalWrite(masterLed, HIGH);
     pln("startall");
     TCCR2A |= _BV(COM2B1);
-    PWM_1 = DUTY1;
+    pwm_state[0].ramp_up = true;
+    pwm_state[0].target_duty = DUTY1;
     on1 = millis();
     pln("start1");
+
     delay(random(10, 21));
     TCCR1A |= _BV(COM1A1);
-    PWM_2 = DUTY2;
+    pwm_state[1].ramp_up = true;
+    pwm_state[1].target_duty = DUTY2;
     on2 = millis();
     pln("start2");
+
     delay(random(10, 21));
     TCCR1A |= _BV(COM1B1);
-    PWM_3 = DUTY3;
+    pwm_state[2].ramp_up = true;
+    pwm_state[2].target_duty = DUTY3;
     on3 = millis();
     pln("start3");
+
     delay(random(10, 21));
     TCCR2A |= _BV(COM2A1);
-    PWM_4 = DUTY4;
+    pwm_state[3].ramp_up = true;
+    pwm_state[3].target_duty = DUTY4;
     on4 = millis();
     pln("start4");
     startAllFlag = false;
@@ -210,43 +214,141 @@ void loop() {
   y3n = motorFilter[2].update(x3);
   y4n = motorFilter[3].update(x4);
 
+  if (pwm_state[0].ramp_up and
+      (millis() - pwm_state[0].last_update > kRampInterval)) {
+    if (pwm_state[0].current_duty < pwm_state[0].target_duty) {
+      pwm_state[0].current_duty =
+          min(pwm_state[0].current_duty + kRampStep, pwm_state[0].target_duty);
+      PWM_1 = pwm_state[0].current_duty;
+      pwm_state[0].last_update = millis();
+    } else {
+      pwm_state[0].ramp_up = false;
+    }
+  }
+  if (pwm_state[1].ramp_up and
+      (millis() - pwm_state[1].last_update > kRampInterval)) {
+    if (pwm_state[1].current_duty < pwm_state[1].target_duty) {
+      pwm_state[1].current_duty =
+          min(pwm_state[1].current_duty + kRampStep, pwm_state[1].target_duty);
+      PWM_2 = pwm_state[1].current_duty;
+      pwm_state[1].last_update = millis();
+    } else {
+      pwm_state[1].ramp_up = false;
+    }
+  }
+  if (pwm_state[2].ramp_up and
+      (millis() - pwm_state[2].last_update > kRampInterval)) {
+    if (pwm_state[2].current_duty < pwm_state[2].target_duty) {
+      pwm_state[2].current_duty =
+          min(pwm_state[2].current_duty + kRampStep, pwm_state[2].target_duty);
+      PWM_3 = pwm_state[2].current_duty;
+      pwm_state[2].last_update = millis();
+    } else {
+      pwm_state[2].ramp_up = false;
+    }
+  }
+  if (pwm_state[3].ramp_up and
+      (millis() - pwm_state[3].last_update > kRampInterval)) {
+    if (pwm_state[3].current_duty < pwm_state[3].target_duty) {
+      pwm_state[3].current_duty =
+          min(pwm_state[3].current_duty + kRampStep, pwm_state[3].target_duty);
+      PWM_4 = pwm_state[3].current_duty;
+      pwm_state[3].last_update = millis();
+    } else {
+      pwm_state[3].ramp_up = false;
+    }
+  }
+
+  if (pwm_state[0].ramp_down and
+      (millis() - pwm_state[0].last_update > kRampInterval)) {
+    if (pwm_state[0].current_duty > pwm_state[0].target_duty) {
+      pwm_state[0].current_duty =
+          max(pwm_state[0].current_duty - kRampStep, pwm_state[0].target_duty);
+      PWM_1 = pwm_state[0].current_duty;
+      pwm_state[0].last_update = millis();
+    } else {
+      pwm_state[0].ramp_down = false;
+      TCCR2A &= ~_BV(COM2B1);  // ledPin1 (D3)
+      digitalWrite(ledPin1, LOW);
+    }
+  }
+  if (pwm_state[1].ramp_down and
+      (millis() - pwm_state[1].last_update > kRampInterval)) {
+    if (pwm_state[1].current_duty > pwm_state[1].target_duty) {
+      pwm_state[1].current_duty =
+          max(pwm_state[1].current_duty - kRampStep, pwm_state[1].target_duty);
+      PWM_2 = pwm_state[1].current_duty;
+      pwm_state[1].last_update = millis();
+    } else {
+      pwm_state[1].ramp_down = false;
+      TCCR1A &= ~_BV(COM1A1);  // ledPin2 (D9)
+      digitalWrite(ledPin2, LOW);
+    }
+  }
+  if (pwm_state[2].ramp_down and
+      (millis() - pwm_state[2].last_update > kRampInterval)) {
+    if (pwm_state[2].current_duty > pwm_state[2].target_duty) {
+      pwm_state[2].current_duty =
+          max(pwm_state[2].current_duty - kRampStep, pwm_state[2].target_duty);
+      PWM_3 = pwm_state[2].current_duty;
+      pwm_state[2].last_update = millis();
+    } else {
+      pwm_state[2].ramp_down = false;
+      TCCR1A &= ~_BV(COM1B1);  // ledPin3 (D10)
+      digitalWrite(ledPin3, LOW);
+    }
+  }
+  if (pwm_state[3].ramp_down and
+      (millis() - pwm_state[3].last_update > kRampInterval)) {
+    if (pwm_state[3].current_duty > pwm_state[3].target_duty) {
+      pwm_state[3].current_duty =
+          max(pwm_state[3].current_duty - kRampStep, pwm_state[3].target_duty);
+      PWM_4 = pwm_state[3].current_duty;
+      pwm_state[3].last_update = millis();
+    } else {
+      pwm_state[3].ramp_down = false;
+      TCCR2A &= ~_BV(COM2A1);  // ledPin4 (D11)
+      digitalWrite(ledPin4, LOW);
+    }
+  }
+
   // Debug print: print all sensePin1-4 values separated by tabs
   // p(y1n); p("\t");
   // p(y2n); p("\t");
   // p(y3n); p("\t");
   // pln(y4n);
 
-  // // Stall detection: shut off if over threshold after 1 second
-  // if (y1n >= th1 && millis() - on1 > 1000) {
-  //     on1 = millis();
-  //     stopLed1();
-  //     pln("stop1");
-  // }
-  // if (y2n >= th2 && millis() - on2 > 1000) {
-  //     on2 = millis();
-  //     stopLed2();
-  //     pln("stop2");
-  // }
-  // if (y3n >= th3 && millis() - on3 > 1000) {
-  //     on3 = millis();
-  //     stopLed3();
-  //     pln("stop3");
-  // }
-  // if (y4n >= th4 && millis() - on4 > 1000) {
-  //     on4 = millis();
-  //     stopLed4();
-  //     pln("stop4");
-  // }
-  // Print them in one line
+  // Stall detection: shut off if over threshold after 1 second
+  if (y1n >= th1 && millis() - on1 > 1000) {
+    on1 = millis();
+    stopLed1();
+    pln("stop1");
+  }
+  if (y2n >= th2 && millis() - on2 > 1000) {
+    on2 = millis();
+    stopLed2();
+    pln("stop2");
+  }
+  if (y3n >= th3 && millis() - on3 > 1000) {
+    on3 = millis();
+    stopLed3();
+    pln("stop3");
+  }
+  if (y4n >= th4 && millis() - on4 > 1000) {
+    on4 = millis();
+    stopLed4();
+    pln("stop4");
+  }
 
-  Serial.print("y1n: ");
-  Serial.print(y1n);
-  Serial.print("\t y2n: ");
-  Serial.print(y2n);
-  Serial.print("\t y3n: ");
-  Serial.print(y3n);
-  Serial.print("\t y4n: ");
-  Serial.println(y4n);
+  // Print them in one line
+  p("y1n: ");
+  p(y1n);
+  p("\t y2n: ");
+  p(y2n);
+  p("\t y3n: ");
+  p(y3n);
+  p("\t y4n: ");
+  pln(y4n);
 
   delay(10);
 }
@@ -265,19 +367,31 @@ void stopAll() {
   unsigned long now = millis();
   if (now - last < D_DELAY) return;
   last = now;
-  PWM_1 = PWM_2 = PWM_3 = PWM_4 = 0;
-  // Force PWM pins low by toggling COMxy1 bits
-  TCCR2A &= ~_BV(COM2B1);  // ledPin1 (D3)
-  TCCR1A &= ~_BV(COM1A1);  // ledPin2 (D9)
-  TCCR1A &= ~_BV(COM1B1);  // ledPin3 (D10)
-  TCCR2A &= ~_BV(COM2A1);  // ledPin4 (D11)
-  digitalWrite(ledPin1, LOW);
-  digitalWrite(ledPin2, LOW);
-  digitalWrite(ledPin3, LOW);
-  digitalWrite(ledPin4, LOW);
+  // PWM_1 = PWM_2 = PWM_3 = PWM_4 = 0;
+  // // Force PWM pins low by toggling COMxy1 bits
+  // TCCR2A &= ~_BV(COM2B1);  // ledPin1 (D3)
+  // TCCR1A &= ~_BV(COM1A1);  // ledPin2 (D9)
+  // TCCR1A &= ~_BV(COM1B1);  // ledPin3 (D10)
+  // TCCR2A &= ~_BV(COM2A1);  // ledPin4 (D11)
+  // digitalWrite(ledPin1, LOW);
+  // digitalWrite(ledPin2, LOW);
+  // digitalWrite(ledPin3, LOW);
+  // digitalWrite(ledPin4, LOW);
 
   digitalWrite(masterLed, LOW);
-  pln("stopall");
+  // pln("stopall");
+
+  pwm_state[0].ramp_down = true;
+  pwm_state[0].target_duty = 0;
+
+  pwm_state[1].ramp_down = true;
+  pwm_state[1].target_duty = 0;
+
+  pwm_state[2].ramp_down = true;
+  pwm_state[2].target_duty = 0;
+
+  pwm_state[3].ramp_down = true;
+  pwm_state[3].target_duty = 0;
 }
 
 // --- Per-Channel START Handlers ---
@@ -288,7 +402,10 @@ void startLed1() {
   last = now;
   TCCR2A |= _BV(COM2B1);  // Reconnect timer to pin
   on1 = millis();
-  PWM_1 = DUTY1;
+  // PWM_1 = DUTY1;
+
+  pwm_state[0].ramp_up = true;
+  pwm_state[0].target_duty = DUTY1;
   pln("start1");
 }
 void startLed2() {
@@ -298,7 +415,9 @@ void startLed2() {
   last = now;
   TCCR1A |= _BV(COM1A1);  // Reconnect timer to pin
   on2 = millis();
-  PWM_2 = DUTY2;
+
+  pwm_state[1].ramp_up = true;
+  pwm_state[1].target_duty = DUTY2;
   pln("start2");
 }
 void startLed3() {
@@ -308,7 +427,9 @@ void startLed3() {
   last = now;
   TCCR1A |= _BV(COM1B1);  // Reconnect timer to pin
   on3 = millis();
-  PWM_3 = DUTY3;
+
+  pwm_state[2].ramp_up = true;
+  pwm_state[2].target_duty = DUTY3;
   pln("start3");
 }
 void startLed4() {
@@ -318,7 +439,9 @@ void startLed4() {
   last = now;
   TCCR2A |= _BV(COM2A1);  // Reconnect timer to pin
   on4 = millis();
-  PWM_4 = DUTY4;
+
+  pwm_state[3].ramp_up = true;
+  pwm_state[3].target_duty = DUTY4;
   pln("start4");
 }
 
@@ -328,9 +451,8 @@ void stopLed1() {
   unsigned long now = millis();
   if (now - last < D_DELAY) return;
   last = now;
-  PWM_1 = 0;
-  TCCR2A &= ~_BV(COM2B1);  // Disconnect timer from pin
-  digitalWrite(ledPin1, LOW);
+  pwm_state[0].ramp_down = true;
+  pwm_state[0].target_duty = 0;
   pln("stop1");
 }
 void stopLed2() {
@@ -338,9 +460,8 @@ void stopLed2() {
   unsigned long now = millis();
   if (now - last < D_DELAY) return;
   last = now;
-  PWM_2 = 0;
-  TCCR1A &= ~_BV(COM1A1);  // Disconnect timer from pin
-  digitalWrite(ledPin2, LOW);
+  pwm_state[1].ramp_down = true;
+  pwm_state[1].target_duty = 0;
   pln("stop2");
 }
 void stopLed3() {
@@ -348,9 +469,8 @@ void stopLed3() {
   unsigned long now = millis();
   if (now - last < D_DELAY) return;
   last = now;
-  PWM_3 = 0;
-  TCCR1A &= ~_BV(COM1B1);  // Disconnect timer from pin
-  digitalWrite(ledPin3, LOW);
+  pwm_state[2].ramp_down = true;
+  pwm_state[2].target_duty = 0;
   pln("stop3");
 }
 void stopLed4() {
@@ -358,8 +478,7 @@ void stopLed4() {
   unsigned long now = millis();
   if (now - last < D_DELAY) return;
   last = now;
-  PWM_4 = 0;
-  TCCR2A &= ~_BV(COM2A1);  // Disconnect timer from pin
-  digitalWrite(ledPin4, LOW);
+  pwm_state[3].ramp_down = true;
+  pwm_state[3].target_duty = 0;
   pln("stop4");
 }
